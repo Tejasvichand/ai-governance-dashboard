@@ -1,1 +1,6 @@
-fastapi\nuvicorn\npandas\nboto3\nscikit-learn\ngiskard
+fastapi
+uvicorn
+pandas
+boto3
+scikit-learn
+giskard
