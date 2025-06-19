@@ -90,6 +90,23 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
       const result = await processDataset(file)
       setProcessedDataset(result) // Store globally
       setProcessedDataState(result)
+      // Send raw file to backend for fairness analysis
+      try {
+        await uploadDatasetToBackend(file)
+      } catch (e) {
+        console.error("Backend upload failed", e)
+      }
+
+      // Run fairness analysis
+      const fairnessResult = await runFairnessAnalysis(result)
+      setFairnessResult(fairnessResult)
+
+      // Send raw file to backend for fairness analysis
+      try {
+        await uploadDatasetToBackend(file)
+      } catch (e) {
+        console.error("Backend upload failed", e)
+      }
 
       // Send raw file to backend for fairness analysis
       try {
