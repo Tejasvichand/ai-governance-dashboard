@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -32,6 +32,7 @@ import {
   Users,
   Target,
 } from "lucide-react"
+import { getFairnessResult } from "@/lib/process-dataset"
 
 // Enhanced mock data with more realistic values
 const demographicParityData = [
@@ -61,6 +62,11 @@ const overallScoreData = [{ name: "Fairness Score", value: 76, fill: "#F59E0B" }
 
 export function BiasMetrics() {
   const [loading, setLoading] = useState(false)
+  const [fairness, setFairness] = useState<any | null>(null)
+
+  useEffect(() => {
+    setFairness(getFairnessResult())
+  }, [])
 
   const handleRefresh = () => {
     setLoading(true)
@@ -125,6 +131,17 @@ export function BiasMetrics() {
           </Button>
         </div>
       </div>
+
+      {fairness && (
+        <Card className="border-0 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-lg">
+          <CardContent className="p-6">
+            <h4 className="text-lg font-bold text-gray-800 mb-2">Fairness Results</h4>
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+              {JSON.stringify(fairness, null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Key Metrics Overview */}
       <div className="grid gap-6 md:grid-cols-4">
