@@ -108,6 +108,13 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
         console.error("Backend upload failed", e)
       }
 
+      // Send raw file to backend for fairness analysis
+      try {
+        await uploadDatasetToBackend(file)
+      } catch (e) {
+        console.error("Backend upload failed", e)
+      }
+
       setProgress(100)
       clearInterval(interval)
 
