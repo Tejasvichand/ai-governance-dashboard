@@ -4,5 +4,5 @@ pandas
 boto3
 scikit-learn
 giskard
-pandas
 fairlearn
+pandas

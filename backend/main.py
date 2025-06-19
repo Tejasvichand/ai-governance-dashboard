@@ -3,12 +3,10 @@ import pandas as pd
 import json
 import argparse
 
-
 def load_config(config_path):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
-
-
+      
 def generate_llm_responses(df, config):
     import requests
     headers = {
@@ -109,13 +107,7 @@ def run_with_deepchecks(df, protected_attr):
     print("✅ Deepchecks bias report saved to deepchecks_report.html")
 
 
-def perform_fairness_check(
-    df,
-    label_col,
-    protected_attr,
-    fairness_tool="fairlearn",
-    config=None,
-):
+def perform_fairness_check(df, label_col, protected_attr, fairness_tool="fairlearn", config=None):
     """Run a fairness check on ``df`` using the selected tool."""
     if fairness_tool == "giskard":
         import giskard
