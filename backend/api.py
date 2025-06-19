@@ -33,4 +33,5 @@ async def fairness_check(
         protected_attr=protected_attr,
         fairness_tool=tool,
     )
+    result = perform_fairness_check(df, label_col=label_col, protected_attr=protected_attr, fairness_tool=tool)
     return result
