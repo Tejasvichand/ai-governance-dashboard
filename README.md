@@ -36,3 +36,8 @@ This project includes:
 │   └── requirements.txt
 ├── setup.sh          # Dev environment setup script
 └── README.md
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
