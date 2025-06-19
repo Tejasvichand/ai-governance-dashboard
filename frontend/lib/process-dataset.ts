@@ -212,3 +212,28 @@ export function setProcessedDataset(data: ProcessedDataset) {
 export function getProcessedDataset(): ProcessedDataset | null {
   return processedDatasetCache
 }
+
+// Store fairness results from the backend
+let fairnessResultCache: any = null
+
+export async function uploadDatasetToBackend(file: File) {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const res = await fetch("http://localhost:8000/fairness-check", {
+    method: "POST",
+    body: formData,
+  })
+
+  if (!res.ok) {
+    throw new Error("Failed to upload dataset to backend")
+  }
+
+  const data = await res.json()
+  fairnessResultCache = data
+  return data
+}
+
+export function getFairnessResult() {
+  return fairnessResultCache
+}
