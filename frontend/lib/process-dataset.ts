@@ -219,7 +219,10 @@ export async function uploadDatasetToBackend(file: File) {
   const formData = new FormData()
   formData.append("file", file)
 
-  const res = await fetch("http://localhost:8000/fairness-check", {
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+  const res = await fetch(`${backendUrl}/fairness-check`, {
     method: "POST",
     body: formData,
   })
