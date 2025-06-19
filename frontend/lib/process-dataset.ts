@@ -212,7 +212,6 @@ export function setProcessedDataset(data: ProcessedDataset) {
 export function getProcessedDataset(): ProcessedDataset | null {
   return processedDatasetCache
 }
-
 // Store fairness results from the backend
 let fairnessResultCache: any = null
 
@@ -221,6 +220,10 @@ export async function uploadDatasetToBackend(file: File) {
   formData.append("file", file)
 
   const res = await fetch("http://localhost:8000/fairness-check", {
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+  const res = await fetch(`${backendUrl}/fairness-check`, {
     method: "POST",
     body: formData,
   })
@@ -236,4 +239,5 @@ export async function uploadDatasetToBackend(file: File) {
 
 export function getFairnessResult() {
   return fairnessResultCache
+}
 }
