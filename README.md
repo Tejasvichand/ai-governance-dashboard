@@ -36,3 +36,14 @@ This project includes:
 │   └── requirements.txt
 ├── setup.sh          # Dev environment setup script
 └── README.md
+```
+
+## 🌐 Environment Variables
+
+Specify the backend endpoint for the frontend using `NEXT_PUBLIC_API_URL` in `frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+This value is read by the browser when uploading datasets.
