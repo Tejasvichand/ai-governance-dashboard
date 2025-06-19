@@ -84,6 +84,44 @@ def run_with_deepchecks(df, protected_attr):
     result = bias_check.run(ds)
     result.save_as_html("deepchecks_report.html")
     print("✅ Deepchecks bias report saved to deepchecks_report.html")
+def perform_fairness_check(df, label_col, protected_attr, fairness_tool="fairlearn", config=None):
+    """Run a fairness check on ``df`` using the selected tool."""
+    if fairness_tool == "giskard":
+        import giskard
+        dataset = giskard.Dataset(
+            df,
+            target=label_col,
+            column_types={protected_attr: "category"}
+        )
+        model = giskard.Model(
+            model=lambda d: d[label_col],
+            model_type="classification",
+            name="Identity Model",
+            feature_names=df.columns.tolist()
+        )
+        report = giskard.scan(model, dataset)
+        report_path = "scan_report.html"
+        report.to_html(report_path)
+        return {"report_path": report_path}
+    elif fairness_tool == "fairlearn":
+        from fairlearn.metrics import MetricFrame, selection_rate, demographic_parity_difference
+        if label_col not in df.columns or protected_attr not in df.columns:
+            raise ValueError("Required columns not found in dataset")
+        df[label_col] = df[label_col].astype(int)
+        metric_frame = MetricFrame(
+            metrics=selection_rate,
+            y_pred=df[label_col],
+            sensitive_features=df[protected_attr]
+        )
+        disparity = demographic_parity_difference(
+            df[label_col], sensitive_features=df[protected_attr]
+        )
+        return {
+            "selection_rate_per_group": metric_frame.by_group.to_dict(),
+            "statistical_parity_gap": disparity
+        }
+    else:
+        raise ValueError(f"Unknown fairness tool: {fairness_tool}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
