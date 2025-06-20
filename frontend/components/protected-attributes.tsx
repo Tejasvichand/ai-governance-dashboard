@@ -19,10 +19,7 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get the processed dataset
     const processedData = getProcessedDataset()
-    console.log("Protected Attributes - Processed Data:", processedData)
-
     if (processedData?.data) {
       setAttributes(processedData.data.identifiedAttributes)
       setDatasetInfo(processedData.data)
@@ -37,19 +34,21 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
   }
 
   const handleContinue = () => {
+    const selected = attributes.filter(attr => attr.isProtected).map(attr => attr.name)
+    if (!selected.length) {
+      alert("Please select at least one protected attribute to continue.")
+      return
+    }
+    sessionStorage.setItem("selectedProtectedAttributes", JSON.stringify(selected))
     onContinue()
   }
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
-      case "high":
-        return "from-red-500 to-pink-500"
-      case "medium":
-        return "from-yellow-500 to-orange-500"
-      case "low":
-        return "from-green-500 to-emerald-500"
-      default:
-        return "from-gray-500 to-slate-500"
+      case "high": return "from-red-500 to-pink-500"
+      case "medium": return "from-yellow-500 to-orange-500"
+      case "low": return "from-green-500 to-emerald-500"
+      default: return "from-gray-500 to-slate-500"
     }
   }
 
@@ -118,55 +117,6 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
         </CardContent>
       </Card>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="border-0 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-emerald-700">Total Columns</p>
-                <p className="text-3xl font-bold text-emerald-800">{attributes.length}</p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg">
-                <Eye className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 bg-gradient-to-br from-orange-50 to-red-50 shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-orange-700">High Risk Attributes</p>
-                <p className="text-3xl font-bold text-orange-800">
-                  {attributes.filter((attr) => attr.riskLevel === "high").length}
-                </p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-orange-500 to-red-500 shadow-lg">
-                <AlertTriangle className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 bg-gradient-to-br from-violet-50 to-purple-50 shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-violet-700">Selected for Analysis</p>
-                <p className="text-3xl font-bold text-violet-800">
-                  {attributes.filter((attr) => attr.isProtected).length}
-                </p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 shadow-lg">
-                <Shield className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Attributes Table */}
       <Card className="border-0 shadow-2xl bg-white/90 backdrop-blur-sm">
         <CardContent className="p-0">
@@ -177,7 +127,6 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
                 Review and confirm which attributes should be considered for fairness analysis
               </p>
             </div>
-
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -216,9 +165,7 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
                         {attr.range && <div className="text-xs text-gray-500">Range: {attr.range}</div>}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          className={`bg-gradient-to-r ${getRiskColor(attr.riskLevel)} text-white border-0 shadow-sm`}
-                        >
+                        <Badge className={`bg-gradient-to-r ${getRiskColor(attr.riskLevel)} text-white border-0 shadow-sm`}>
                           {attr.riskLevel}
                         </Badge>
                       </TableCell>

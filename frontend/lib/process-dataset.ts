@@ -28,7 +28,6 @@ interface ProcessedDataset {
   }
 }
 
-// Function to detect if a column might be a protected attribute
 function analyzeColumnForProtectedAttributes(
   columnName: string,
   values: string[],
@@ -39,7 +38,6 @@ function analyzeColumnForProtectedAttributes(
 } {
   const name = columnName.toLowerCase()
 
-  // Known protected attribute patterns
   const protectedPatterns = [
     { pattern: /gender|sex/, confidence: 0.95, risk: "high" },
     { pattern: /age|birth|dob/, confidence: 0.92, risk: "high" },
@@ -58,15 +56,12 @@ function analyzeColumnForProtectedAttributes(
     }
   }
 
-  // Check values for potential protected attribute indicators
   const uniqueValues = [...new Set(values.slice(0, 100))].map((v) => v?.toString().toLowerCase())
 
-  // Gender indicators
   if (uniqueValues.some((v) => ["male", "female", "m", "f", "man", "woman"].includes(v))) {
     return { isProtected: true, confidence: 0.9, riskLevel: "high" }
   }
 
-  // Age indicators (numeric ranges that look like ages)
   const numericValues = values.filter((v) => !isNaN(Number(v))).map(Number)
   if (numericValues.length > 0) {
     const min = Math.min(...numericValues)
@@ -79,44 +74,29 @@ function analyzeColumnForProtectedAttributes(
   return { isProtected: false, confidence: 0.1, riskLevel: "low" }
 }
 
-// Function to determine column data type
 function detectColumnType(values: string[]): string {
   const nonEmptyValues = values.filter((v) => v !== null && v !== undefined && v !== "")
-
   if (nonEmptyValues.length === 0) return "unknown"
 
-  // Check if all values are numeric
   const numericValues = nonEmptyValues.filter((v) => !isNaN(Number(v)))
-  if (numericValues.length / nonEmptyValues.length > 0.8) {
-    return "numerical"
-  }
+  if (numericValues.length / nonEmptyValues.length > 0.8) return "numerical"
 
-  // Check if values look like dates
   const dateValues = nonEmptyValues.filter((v) => !isNaN(Date.parse(v)))
-  if (dateValues.length / nonEmptyValues.length > 0.8) {
-    return "date"
-  }
+  if (dateValues.length / nonEmptyValues.length > 0.8) return "date"
 
-  // Check if boolean-like
   const booleanValues = nonEmptyValues.filter((v) =>
     ["true", "false", "yes", "no", "1", "0", "y", "n"].includes(v.toLowerCase()),
   )
-  if (booleanValues.length / nonEmptyValues.length > 0.8) {
-    return "boolean"
-  }
+  if (booleanValues.length / nonEmptyValues.length > 0.8) return "boolean"
 
   return "categorical"
 }
 
-// Parse CSV content
 function parseCSV(csvContent: string): { headers: string[]; rows: string[][] } {
   const lines = csvContent.split("\n").filter((line) => line.trim())
   if (lines.length === 0) throw new Error("Empty CSV file")
 
-  // Parse headers
   const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""))
-
-  // Parse rows
   const rows = lines.slice(1).map((line) => {
     return line.split(",").map((cell) => cell.trim().replace(/"/g, ""))
   })
@@ -132,15 +112,11 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
       try {
         const content = e.target?.result as string
         const startTime = Date.now()
-
-        // Parse the CSV
         const { headers, rows } = parseCSV(content)
 
-        // Analyze each column
         const identifiedAttributes: ProcessedColumn[] = headers.map((header, index) => {
           const columnValues = rows.map((row) => row[index] || "").filter((v) => v !== "")
           const uniqueValues = [...new Set(columnValues)].slice(0, 10)
-
           const type = detectColumnType(columnValues)
           const { isProtected, confidence, riskLevel } = analyzeColumnForProtectedAttributes(header, columnValues)
 
@@ -166,8 +142,6 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
         })
 
         const processingTime = ((Date.now() - startTime) / 1000).toFixed(1)
-
-        // Create preview data (first 5 rows)
         const preview = rows.slice(0, 5).map((row) => {
           const obj: any = {}
           headers.forEach((header, index) => {
@@ -194,15 +168,12 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
       }
     }
 
-    reader.onerror = () => {
-      reject(new Error("Failed to read file"))
-    }
-
+    reader.onerror = () => reject(new Error("Failed to read file"))
     reader.readAsText(file)
   })
 }
 
-// Store processed data globally (in a real app, you'd use proper state management)
+// Global cache
 let processedDatasetCache: ProcessedDataset | null = null
 
 export function setProcessedDataset(data: ProcessedDataset) {
@@ -212,25 +183,21 @@ export function setProcessedDataset(data: ProcessedDataset) {
 export function getProcessedDataset(): ProcessedDataset | null {
   return processedDatasetCache
 }
-// Store fairness results from the backend
+
 let fairnessResultCache: any = null
 
 export async function uploadDatasetToBackend(file: File) {
   const formData = new FormData()
   formData.append("file", file)
 
-  const res = await fetch("http://localhost:8000/fairness-check", {
-  const backendUrl =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
   const res = await fetch(`${backendUrl}/fairness-check`, {
     method: "POST",
     body: formData,
   })
 
-  if (!res.ok) {
-    throw new Error("Failed to upload dataset to backend")
-  }
+  if (!res.ok) throw new Error("Failed to upload dataset to backend")
 
   const data = await res.json()
   fairnessResultCache = data
@@ -239,5 +206,4 @@ export async function uploadDatasetToBackend(file: File) {
 
 export function getFairnessResult() {
   return fairnessResultCache
-}
 }
