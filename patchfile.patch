@@ -1,0 +1,568 @@
+diff --git a/backend/api.py b/backend/api.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1da67316dbf8e66c2a2fa1c4cdee8df9a1fd8986
+--- /dev/null
++++ b/backend/api.py
+@@ -0,0 +1,24 @@
++from fastapi import FastAPI, UploadFile, File, Form
++from fastapi.middleware.cors import CORSMiddleware
++import pandas as pd
++import io
++from main import perform_fairness_check
++
++app = FastAPI()
++app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
++
++@app.post("/fairness-check")
++async def fairness_check(
++    file: UploadFile = File(...),
++    label_col: str = Form("label"),
++    protected_attr: str = Form("group"),
++    tool: str = Form("fairlearn"),
++):
++    content = await file.read()
++    filename = file.filename.lower()
++    if filename.endswith((".xlsx", ".xls")):
++        df = pd.read_excel(io.BytesIO(content))
++    else:
++        df = pd.read_csv(io.BytesIO(content))
++    result = perform_fairness_check(df, label_col=label_col, protected_attr=protected_attr, fairness_tool=tool)
++    return result
+diff --git a/backend/main.py b/backend/main.py
+index 59aabba03b53c5cbcdc7a6a05b01d368ebb7bd05..fec8669fb0b67c4d66adac47e1429d4a955e7709 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -63,49 +63,88 @@ def run_with_fairlearn(df, protected_attr):
+     metric_frame = MetricFrame(metrics=selection_rate, y_pred=df["binary"], sensitive_features=group)
+     disparity = demographic_parity_difference(df["binary"], sensitive_features=group)
+ 
+     result = {
+         "selection_rate_per_group": metric_frame.by_group.to_dict(),
+         "statistical_parity_gap": disparity,
+         "status": "Fairness Violation" if abs(disparity) > 0.1 else "Pass"
+     }
+     with open("fairlearn_report.json", "w") as f:
+         json.dump(result, f, indent=2)
+     print("✅ Fairlearn metrics saved to fairlearn_report.json")
+ 
+ def run_with_deepchecks(df, protected_attr):
+     from deepchecks.nlp.checks import TextBias
+     from deepchecks.nlp import Dataset as DeepDataset
+ 
+     if "response" not in df.columns:
+         raise ValueError("LLM output not found in 'response'. Cannot run Deepchecks.")
+ 
+     ds = DeepDataset(text=df["response"], label=df[protected_attr], task_type='text_generation')
+     bias_check = TextBias()
+     result = bias_check.run(ds)
+     result.save_as_html("deepchecks_report.html")
+     print("✅ Deepchecks bias report saved to deepchecks_report.html")
+ 
++def perform_fairness_check(df, label_col, protected_attr, fairness_tool="fairlearn", config=None):
++    """Run a fairness check on ``df`` using the selected tool."""
++    if fairness_tool == "giskard":
++        import giskard
++        dataset = giskard.Dataset(
++            df,
++            target=label_col,
++            column_types={protected_attr: "category"}
++        )
++        model = giskard.Model(
++            model=lambda d: d[label_col],
++            model_type="classification",
++            name="Identity Model",
++            feature_names=df.columns.tolist()
++        )
++        report = giskard.scan(model, dataset)
++        report_path = "scan_report.html"
++        report.to_html(report_path)
++        return {"report_path": report_path}
++    elif fairness_tool == "fairlearn":
++        from fairlearn.metrics import MetricFrame, selection_rate, demographic_parity_difference
++        if label_col not in df.columns or protected_attr not in df.columns:
++            raise ValueError("Required columns not found in dataset")
++        df[label_col] = df[label_col].astype(int)
++        metric_frame = MetricFrame(
++            metrics=selection_rate,
++            y_pred=df[label_col],
++            sensitive_features=df[protected_attr]
++        )
++        disparity = demographic_parity_difference(
++            df[label_col], sensitive_features=df[protected_attr]
++        )
++        return {
++            "selection_rate_per_group": metric_frame.by_group.to_dict(),
++            "statistical_parity_gap": disparity
++        }
++    else:
++        raise ValueError(f"Unknown fairness tool: {fairness_tool}")
++
+ if __name__ == "__main__":
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--config", required=True, help="Path to llm_config.yaml")
+     args = parser.parse_args()
+ 
+     config = load_config(args.config)
+     prompts = config["prompts"]
+     fairness_tool = config.get("fairness_tool", "giskard").lower()
+ 
+     rows = [{"prompt": p, "group": group} for group, plist in prompts.items() for p in plist]
+     df = pd.DataFrame(rows)
+ 
+     # Run LLM to get responses
+     df["response"] = generate_llm_responses(df, config)
+ 
+     # Dispatch to selected fairness tool
+     if fairness_tool == "giskard":
+         run_with_giskard(df, config)
+     elif fairness_tool == "fairlearn":
+         run_with_fairlearn(df, protected_attr="group")
+     elif fairness_tool == "deepchecks":
+         run_with_deepchecks(df, protected_attr="group")
+     else:
+-        print(f"❌ Unknown fairness tool: {fairness_tool}")
+\ No newline at end of file
++        print(f"❌ Unknown fairness tool: {fairness_tool}")
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 42df403cef42caa7ab49b6c7f5d543d3e91c876b..402cc75596b36396a6c145ecd2793471bcccee90 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -1,7 +1,7 @@
+ fastapi
+ uvicorn
+ pandas
+ boto3
+ scikit-learn
+ giskard
+-pandas
++fairlearn
+diff --git a/backend/venv/pyvenv.cfg b/backend/venv/pyvenv.cfg
+deleted file mode 100644
+index 515890995904c815bb876f9366255be331338970..0000000000000000000000000000000000000000
+--- a/backend/venv/pyvenv.cfg
++++ /dev/null
+@@ -1,3 +0,0 @@
+-home = C:\Users\tejas\AppData\Local\Programs\Python\Python310
+-include-system-site-packages = false
+-version = 3.10.11
+diff --git a/frontend/app/components/bias-metrics.tsx b/frontend/app/components/bias-metrics.tsx
+index 26b01942bb0e8fabb42abbedb0e4c4013925255f..4b19d81fd871b57e1cfd32c1c9b21a748a2115e8 100644
+--- a/frontend/app/components/bias-metrics.tsx
++++ b/frontend/app/components/bias-metrics.tsx
+@@ -1,88 +1,94 @@
+ "use client"
+ 
+-import { useState } from "react"
++import { useState, useEffect } from "react"
+ import { Button } from "@/components/ui/button"
+ import { Card, CardContent } from "@/components/ui/card"
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+ import {
+   BarChart,
+   Bar,
+   XAxis,
+   YAxis,
+   CartesianGrid,
+   Tooltip,
+   Legend,
+   ResponsiveContainer,
+   LineChart,
+   Line,
+   PieChart,
+   Pie,
+   Cell,
+   RadialBarChart,
+   RadialBar,
+ } from "recharts"
+ import {
+   Download,
+   FileText,
+   RefreshCw,
+   TrendingDown,
+   TrendingUp,
+   AlertTriangle,
+   CheckCircle,
+   Users,
+   Target,
+ } from "lucide-react"
++import { getFairnessResult } from "@/lib/process-dataset"
+ 
+ // Enhanced mock data with more realistic values
+ const demographicParityData = [
+   { name: "Male", value: 0.82, benchmark: 0.8, count: 450 },
+   { name: "Female", value: 0.76, benchmark: 0.8, count: 380 },
+   { name: "Non-binary", value: 0.71, benchmark: 0.8, count: 45 },
+ ]
+ 
+ const equalOpportunityData = [
+   { name: "White", value: 0.85, benchmark: 0.8, count: 520 },
+   { name: "Black", value: 0.72, benchmark: 0.8, count: 180 },
+   { name: "Asian", value: 0.79, benchmark: 0.8, count: 120 },
+   { name: "Hispanic", value: 0.74, benchmark: 0.8, count: 95 },
+   { name: "Other", value: 0.76, benchmark: 0.8, count: 85 },
+ ]
+ 
+ const intersectionalData = [
+   { name: "White Male", value: 0.86, fill: "#3B82F6" },
+   { name: "White Female", value: 0.82, fill: "#10B981" },
+   { name: "Black Male", value: 0.75, fill: "#F59E0B" },
+   { name: "Black Female", value: 0.69, fill: "#EF4444" },
+   { name: "Asian Male", value: 0.81, fill: "#8B5CF6" },
+   { name: "Asian Female", value: 0.77, fill: "#EC4899" },
+ ]
+ 
+ const overallScoreData = [{ name: "Fairness Score", value: 76, fill: "#F59E0B" }]
+ 
+ export function BiasMetrics() {
+   const [loading, setLoading] = useState(false)
++  const [fairness, setFairness] = useState<any | null>(null)
++
++  useEffect(() => {
++    setFairness(getFairnessResult())
++  }, [])
+ 
+   const handleRefresh = () => {
+     setLoading(true)
+     setTimeout(() => setLoading(false), 1500)
+   }
+ 
+   const handleDownloadReport = () => {
+     alert("Downloading comprehensive bias analysis report... (This would be a real PDF in production)")
+   }
+ 
+   const CustomTooltip = ({ active, payload, label }: any) => {
+     if (active && payload && payload.length) {
+       return (
+         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+           <p className="font-semibold text-gray-800">{label}</p>
+           {payload.map((entry: any, index: number) => (
+             <p key={index} style={{ color: entry.color }} className="text-sm">
+               {entry.name}: {(entry.value * 100).toFixed(1)}%
+             </p>
+           ))}
+         </div>
+       )
+     }
+     return null
+   }
+@@ -104,50 +110,61 @@ export function BiasMetrics() {
+             className="border-gray-300 hover:bg-gray-50"
+           >
+             {loading ? (
+               <>
+                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                 Refreshing...
+               </>
+             ) : (
+               <>
+                 <RefreshCw className="h-4 w-4 mr-2" />
+                 Refresh Analysis
+               </>
+             )}
+           </Button>
+           <Button
+             size="sm"
+             onClick={handleDownloadReport}
+             className="bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+           >
+             <Download className="h-4 w-4 mr-2" />
+             Download Report
+           </Button>
+         </div>
+       </div>
+ 
++      {fairness && (
++        <Card className="border-0 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-lg">
++          <CardContent className="p-6">
++            <h4 className="text-lg font-bold text-gray-800 mb-2">Fairness Results</h4>
++            <pre className="text-sm text-gray-700 whitespace-pre-wrap">
++              {JSON.stringify(fairness, null, 2)}
++            </pre>
++          </CardContent>
++        </Card>
++      )}
++
+       {/* Key Metrics Overview */}
+       <div className="grid gap-6 md:grid-cols-4">
+         <Card className="border-0 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg">
+           <CardContent className="p-6">
+             <div className="flex items-center justify-between">
+               <div>
+                 <p className="text-sm font-medium text-blue-700">Overall Fairness</p>
+                 <p className="text-3xl font-bold text-blue-800">76%</p>
+                 <p className="text-xs text-blue-600 flex items-center mt-1">
+                   <TrendingDown className="h-3 w-3 mr-1" />
+                   Needs improvement
+                 </p>
+               </div>
+               <div className="h-12 w-12 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg">
+                 <Target className="h-6 w-6 text-white" />
+               </div>
+             </div>
+           </CardContent>
+         </Card>
+ 
+         <Card className="border-0 bg-gradient-to-br from-red-50 to-pink-50 shadow-lg">
+           <CardContent className="p-6">
+             <div className="flex items-center justify-between">
+               <div>
+                 <p className="text-sm font-medium text-red-700">Critical Issues</p>
+diff --git a/frontend/app/components/upload-dataset.tsx b/frontend/app/components/upload-dataset.tsx
+index 755a83b0a7be29c9781aca5509f0b6d9dd931a52..aceae79e7518b2814c2feb62b24163270c1e937a 100644
+--- a/frontend/app/components/upload-dataset.tsx
++++ b/frontend/app/components/upload-dataset.tsx
+@@ -1,34 +1,38 @@
+ "use client"
+ 
+ import type React from "react"
+ import { useState } from "react"
+ import { Button } from "@/components/ui/button"
+ import { Card } from "@/components/ui/card"
+ import { Progress } from "@/components/ui/progress"
+ import { Upload, FileSpreadsheet, AlertCircle, Sparkles, Zap, Target, FileText, CheckCircle } from "lucide-react"
+-import { processDataset, setProcessedDataset } from "@/lib/process-dataset"
++import {
++  processDataset,
++  setProcessedDataset,
++  uploadDatasetToBackend,
++} from "@/lib/process-dataset"
+ 
+ interface UploadDatasetProps {
+   onDataProcessed: () => void
+ }
+ 
+ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
+   const [file, setFile] = useState<File | null>(null)
+   const [uploading, setUploading] = useState(false)
+   const [progress, setProgress] = useState(0)
+   const [error, setError] = useState<string | null>(null)
+   const [processedData, setProcessedDataState] = useState<any>(null)
+ 
+   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const selectedFile = e.target.files?.[0]
+     if (selectedFile) {
+       const fileName = selectedFile.name.toLowerCase()
+       const fileType = selectedFile.type.toLowerCase()
+ 
+       const validExtensions = [".xlsx", ".xls", ".csv", ".tsv", ".txt"]
+       const validMimeTypes = [
+         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+         "application/vnd.ms-excel",
+         "application/excel",
+         "application/x-excel",
+         "application/x-msexcel",
+@@ -65,50 +69,57 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
+     }
+   }
+ 
+   const handleUpload = async () => {
+     if (!file) return
+ 
+     setUploading(true)
+     setProgress(0)
+     setError(null)
+ 
+     try {
+       const interval = setInterval(() => {
+         setProgress((prev) => {
+           if (prev >= 90) {
+             clearInterval(interval)
+             return 90
+           }
+           return prev + 10
+         })
+       }, 200)
+ 
+       const result = await processDataset(file)
+       setProcessedDataset(result) // Store globally
+       setProcessedDataState(result)
+ 
++      // Send raw file to backend for fairness analysis
++      try {
++        await uploadDatasetToBackend(file)
++      } catch (e) {
++        console.error("Backend upload failed", e)
++      }
++
+       setProgress(100)
+       clearInterval(interval)
+ 
+       // Small delay to show completion, then notify parent
+       setTimeout(() => {
+         onDataProcessed()
+       }, 1000)
+     } catch (err: any) {
+       setError(`Error processing the dataset: ${err.message}`)
+       console.error(err)
+     } finally {
+       setUploading(false)
+     }
+   }
+ 
+   const handleViewResults = () => {
+     onDataProcessed()
+   }
+ 
+   const getFileIcon = (fileName: string) => {
+     const extension = fileName.toLowerCase().split(".").pop()
+     if (extension === "csv" || extension === "txt" || extension === "tsv") {
+       return <FileText className="h-6 w-6 text-white" />
+     }
+     return <FileSpreadsheet className="h-6 w-6 text-white" />
+diff --git a/frontend/components/upload-dataset.tsx b/frontend/components/upload-dataset.tsx
+index 755a83b0a7be29c9781aca5509f0b6d9dd931a52..aceae79e7518b2814c2feb62b24163270c1e937a 100644
+--- a/frontend/components/upload-dataset.tsx
++++ b/frontend/components/upload-dataset.tsx
+@@ -1,34 +1,38 @@
+ "use client"
+ 
+ import type React from "react"
+ import { useState } from "react"
+ import { Button } from "@/components/ui/button"
+ import { Card } from "@/components/ui/card"
+ import { Progress } from "@/components/ui/progress"
+ import { Upload, FileSpreadsheet, AlertCircle, Sparkles, Zap, Target, FileText, CheckCircle } from "lucide-react"
+-import { processDataset, setProcessedDataset } from "@/lib/process-dataset"
++import {
++  processDataset,
++  setProcessedDataset,
++  uploadDatasetToBackend,
++} from "@/lib/process-dataset"
+ 
+ interface UploadDatasetProps {
+   onDataProcessed: () => void
+ }
+ 
+ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
+   const [file, setFile] = useState<File | null>(null)
+   const [uploading, setUploading] = useState(false)
+   const [progress, setProgress] = useState(0)
+   const [error, setError] = useState<string | null>(null)
+   const [processedData, setProcessedDataState] = useState<any>(null)
+ 
+   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const selectedFile = e.target.files?.[0]
+     if (selectedFile) {
+       const fileName = selectedFile.name.toLowerCase()
+       const fileType = selectedFile.type.toLowerCase()
+ 
+       const validExtensions = [".xlsx", ".xls", ".csv", ".tsv", ".txt"]
+       const validMimeTypes = [
+         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+         "application/vnd.ms-excel",
+         "application/excel",
+         "application/x-excel",
+         "application/x-msexcel",
+@@ -65,50 +69,57 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
+     }
+   }
+ 
+   const handleUpload = async () => {
+     if (!file) return
+ 
+     setUploading(true)
+     setProgress(0)
+     setError(null)
+ 
+     try {
+       const interval = setInterval(() => {
+         setProgress((prev) => {
+           if (prev >= 90) {
+             clearInterval(interval)
+             return 90
+           }
+           return prev + 10
+         })
+       }, 200)
+ 
+       const result = await processDataset(file)
+       setProcessedDataset(result) // Store globally
+       setProcessedDataState(result)
+ 
++      // Send raw file to backend for fairness analysis
++      try {
++        await uploadDatasetToBackend(file)
++      } catch (e) {
++        console.error("Backend upload failed", e)
++      }
++
+       setProgress(100)
+       clearInterval(interval)
+ 
+       // Small delay to show completion, then notify parent
+       setTimeout(() => {
+         onDataProcessed()
+       }, 1000)
+     } catch (err: any) {
+       setError(`Error processing the dataset: ${err.message}`)
+       console.error(err)
+     } finally {
+       setUploading(false)
+     }
+   }
+ 
+   const handleViewResults = () => {
+     onDataProcessed()
+   }
+ 
+   const getFileIcon = (fileName: string) => {
+     const extension = fileName.toLowerCase().split(".").pop()
+     if (extension === "csv" || extension === "txt" || extension === "tsv") {
+       return <FileText className="h-6 w-6 text-white" />
+     }
+     return <FileSpreadsheet className="h-6 w-6 text-white" />
+diff --git a/frontend/lib/process-dataset.ts b/frontend/lib/process-dataset.ts
+index 01e1e554bdd46114931c23f1dd442f5a4cb35c1d..a62ad9c1900cfb37cafd97637acc263b0855b9a0 100644
+--- a/frontend/lib/process-dataset.ts
++++ b/frontend/lib/process-dataset.ts
+@@ -190,25 +190,50 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
+           },
+         })
+       } catch (error) {
+         reject(new Error(`Failed to process CSV: ${error}`))
+       }
+     }
+ 
+     reader.onerror = () => {
+       reject(new Error("Failed to read file"))
+     }
+ 
+     reader.readAsText(file)
+   })
+ }
+ 
+ // Store processed data globally (in a real app, you'd use proper state management)
+ let processedDatasetCache: ProcessedDataset | null = null
+ 
+ export function setProcessedDataset(data: ProcessedDataset) {
+   processedDatasetCache = data
+ }
+ 
+ export function getProcessedDataset(): ProcessedDataset | null {
+   return processedDatasetCache
+ }
++
++// Store fairness results from the backend
++let fairnessResultCache: any = null
++
++export async function uploadDatasetToBackend(file: File) {
++  const formData = new FormData()
++  formData.append("file", file)
++
++  const res = await fetch("http://localhost:8000/fairness-check", {
++    method: "POST",
++    body: formData,
++  })
++
++  if (!res.ok) {
++    throw new Error("Failed to upload dataset to backend")
++  }
++
++  const data = await res.json()
++  fairnessResultCache = data
++  return data
++}
++
++export function getFairnessResult() {
++  return fairnessResultCache
++}

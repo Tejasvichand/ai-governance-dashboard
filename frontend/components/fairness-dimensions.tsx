@@ -131,6 +131,8 @@ export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
   }
 
   const handleContinue = () => {
+    sessionStorage.setItem("selectedFairnessDimension", selectedDimension)
+    sessionStorage.setItem("selectedFairnessMetrics", JSON.stringify(selectedMetrics[selectedDimension] || []))
     onContinue()
   }
 
@@ -153,7 +155,6 @@ export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="text-center">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl mb-4 shadow-lg">
           <Sparkles className="h-8 w-8 text-white" />
@@ -168,7 +169,6 @@ export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
       <Card className="border-0 shadow-2xl bg-white/90 backdrop-blur-sm">
         <CardContent className="p-8">
           <div className="grid lg:grid-cols-5 gap-8">
-            {/* Dimension Selection */}
             <div className="lg:col-span-2">
               <h4 className="text-lg font-bold text-gray-800 mb-6">Fairness Dimensions</h4>
               <RadioGroup value={selectedDimension} onValueChange={setSelectedDimension} className="space-y-4">
@@ -197,7 +197,6 @@ export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
               </RadioGroup>
             </div>
 
-            {/* Metrics Selection */}
             <div className="lg:col-span-3">
               <Card className={`border-0 bg-gradient-to-br ${currentDimension?.color} shadow-lg`}>
                 <CardContent className="p-6 text-white">
@@ -240,7 +239,6 @@ export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
             <Button
               variant="outline"
