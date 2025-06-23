@@ -1,3 +1,5 @@
+// page.tsx
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -7,44 +9,154 @@ import { FairnessDimensions } from "./components/fairness-dimensions"
 import { BiasMetrics } from "./components/bias-metrics"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Shield, Brain, BarChart3, FileSpreadsheet } from "lucide-react"
+import { Shield, Brain, BarChart3, FileSpreadsheet, AlertTriangle } from "lucide-react"
 import { getProcessedDataset } from "@/lib/process-dataset"
+
+// --- NEW TYPE DEFINITIONS FOR PAGE.TSX STATE ---
+interface FairnessSelection {
+  dimension: string;
+  metrics: string[];
+}
+
+interface BiasAnalysisResultData { 
+  dashboard_metrics: {
+    overall_fairness: { percentage: number; status_text: string; };
+    critical_issues: { count: number; status_text: string; };
+    groups_analyzed: { count: number; status_text: string; };
+    confidence_level: { percentage: number; status_text: string; };
+  };
+  detailed_analysis: {
+    test_type: string;
+    overall_status: string;
+    issues: any[];
+    scan_info: string;
+    prompt_details: any[];
+  };
+}
+// --- END NEW TYPE DEFINITIONS ---
+
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("upload")
   const [hasProcessedData, setHasProcessedData] = useState(false)
+  
+  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
+  const [fairnessSelection, setFairnessSelection] = useState<FairnessSelection | null>(null);
+  const [fairnessResult, setFairnessResult] = useState<BiasAnalysisResultData | null>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null); 
+
 
   useEffect(() => {
-    // Check if we have processed data on component mount
+    console.log("page.tsx: Component mounted. Initializing state and checking URL params.");
     const processedData = getProcessedDataset()
     if (processedData?.data) {
-      setHasProcessedData(true)
+      setHasProcessedData(true);
+      console.log("page.tsx: Found processed data in session storage.");
     }
 
-    // Check URL parameters for tab navigation
     const urlParams = new URLSearchParams(window.location.search)
     const tabParam = urlParams.get("tab")
     if (tabParam && ["upload", "attributes", "fairness", "metrics"].includes(tabParam)) {
-      setActiveTab(tabParam)
+      setActiveTab(tabParam);
+      console.log(`page.tsx: Setting active tab from URL to: ${tabParam}`);
+    } else {
+      console.log(`page.tsx: Default active tab: ${activeTab}`);
     }
+    console.log("page.tsx: Initial State - hasProcessedData:", hasProcessedData, "uploadedFilename:", uploadedFilename, "fairnessResult:", fairnessResult);
+
   }, [])
 
   const handleTabChange = (value: string) => {
-    setActiveTab(value)
-    // Update URL without page reload
-    const url = new URL(window.location.href)
-    url.searchParams.set("tab", value)
-    window.history.pushState({}, "", url.toString())
+    console.log(`page.tsx: handleTabChange - Changing tab from ${activeTab} to ${value}`);
+    setActiveTab(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", value);
+    window.history.pushState({}, "", url.toString());
+    console.log(`page.tsx: URL updated to tab: ${value}`);
   }
 
-  const handleDataProcessed = () => {
-    setHasProcessedData(true)
-    setActiveTab("attributes")
-    // Update URL
-    const url = new URL(window.location.href)
-    url.searchParams.set("tab", "attributes")
-    window.history.pushState({}, "", url.toString())
+  const handleDataProcessed = (filename: string) => {
+    console.log(`page.tsx: handleDataProcessed - Received filename from upload-dataset: ${filename}`);
+    setUploadedFilename(filename);
+    setHasProcessedData(true);
+    setActiveTab("attributes");
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", "attributes");
+    window.history.pushState({}, "", url.toString());
+    console.log("page.tsx: Navigated to 'attributes' tab.");
+    console.log("page.tsx: State after upload - uploadedFilename:", filename, "hasProcessedData:", true);
   }
+
+  const handleFairnessSelectionAndAnalyze = async (selection: FairnessSelection) => {
+    console.log("page.tsx: handleFairnessSelectionAndAnalyze - Initiating bias analysis.");
+    console.log("page.tsx: Selected fairness dimension/metrics:", selection);
+
+    setFairnessSelection(selection);
+    setPageError(null); 
+    setActiveTab("metrics");
+    setIsAnalysisLoading(true);
+
+    const selectedProtectedAttrList = JSON.parse(sessionStorage.getItem("selectedProtectedAttributes") || "[]");
+    const protectedAttr = selectedProtectedAttrList?.[0] || "gender"; 
+    console.log("page.tsx: Retrieved protected attribute from session storage:", protectedAttr);
+    
+    if (!uploadedFilename) {
+      console.error("page.tsx: Error - No uploaded filename found to perform bias analysis. Aborting API call.");
+      setIsAnalysisLoading(false);
+      setPageError("Please upload a dataset first before running analysis.");
+      setActiveTab("upload");
+      return; 
+    }
+
+    console.log("page.tsx: Sending request to backend /fairness-check...");
+    console.log("page.tsx: Request Payload - filename:", uploadedFilename, "protected_attr:", protectedAttr, "fairness_dimension:", selection.dimension, "fairness_metrics:", selection.metrics.join(","));
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/fairness-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          filename: uploadedFilename,
+          protected_attr: protectedAttr,
+          fairness_dimension: selection.dimension,
+          fairness_metrics: selection.metrics.join(","),
+          label_col: "response",
+          tool: "giskard",
+        }),
+      });
+      const data = await res.json();
+      
+      // >>> ADDED CRITICAL LOG HERE TO SEE RAW RESPONSE <<<
+      console.log("page.tsx: Raw API response data:", JSON.stringify(data, null, 2));
+      // >>> END CRITICAL LOG <<<
+
+      if (data.status === "success" && data.result) {
+        // Add another check for dashboard_metrics existence
+        if (data.result.dashboard_metrics) {
+            setFairnessResult(data.result); 
+            console.log("page.tsx: Bias analysis successful. Stored results in fairnessResult state.");
+            console.log("page.tsx: fairnessResult structure after setting:", JSON.stringify(data.result, null, 2)); // Log the stored structure
+        } else {
+            console.error("page.tsx: Backend returned success but data.result.dashboard_metrics are missing or null.");
+            setPageError("Analysis completed, but dashboard metrics are missing from backend response.");
+            setFairnessResult(null);
+        }
+      } else {
+        console.error("page.tsx: Fairness check failed:", data.message || "Unknown error from backend.");
+        setPageError(data.message || "Fairness analysis failed. Please check backend logs.");
+        setFairnessResult(null);
+      }
+    } catch (e) {
+      console.error("page.tsx: Error calling fairness-check API:", e);
+      setPageError(`Network or API error: ${e instanceof Error ? e.message : String(e)}. Check browser console and backend logs.`);
+      setFairnessResult(null);
+    } finally {
+      setIsAnalysisLoading(false);
+      console.log("page.tsx: Bias analysis loading state set to false.");
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -92,7 +204,7 @@ export default function Home() {
               </TabsTrigger>
               <TabsTrigger
                 value="metrics"
-                disabled={!hasProcessedData}
+                disabled={!hasProcessedData || (isAnalysisLoading && !fairnessResult)}
                 className="flex items-center gap-2 rounded-xl data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-purple-500 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <BarChart3 className="h-4 w-4" />
@@ -147,7 +259,7 @@ export default function Home() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-8">
-                <FairnessDimensions onContinue={() => handleTabChange("metrics")} />
+                <FairnessDimensions onContinue={handleFairnessSelectionAndAnalyze} /> 
               </CardContent>
             </Card>
           </TabsContent>
@@ -164,7 +276,7 @@ export default function Home() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-8">
-                <BiasMetrics />
+                <BiasMetrics data={fairnessResult} isLoading={isAnalysisLoading} /> 
               </CardContent>
             </Card>
           </TabsContent>

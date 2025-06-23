@@ -102,7 +102,7 @@ const fairnessDimensions = [
 ]
 
 interface FairnessDimensionsProps {
-  onContinue: () => void
+  onContinue: (selection: { dimension: string; metrics: string[] }) => void; // CORRECT PROP SIGNATURE
 }
 
 export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
@@ -131,7 +131,11 @@ export function FairnessDimensions({ onContinue }: FairnessDimensionsProps) {
   }
 
   const handleContinue = () => {
-    onContinue()
+    // FIX: Pass the selected values to the onContinue prop
+    onContinue({
+      dimension: selectedDimension,
+      metrics: selectedMetrics[selectedDimension] || [],
+    });
   }
 
   const currentDimension = fairnessDimensions.find((d) => d.id === selectedDimension)

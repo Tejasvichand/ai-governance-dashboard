@@ -1,0 +1,39 @@
+import os
+import litellm
+import openai
+import sys
+
+# Optional: Turn on LiteLLM debug for very verbose output
+# litellm._turn_on_debug()
+# litellm.set_verbose = True # Alternative verbose setting
+
+# Set your API key directly in the script for this test
+# (Alternatively, ensure OPENAI_API_KEY environment variable is set before running this script)
+# os.environ["OPENAI_API_KEY"] = "YOUR_OPENAI_API_KEY_HERE" 
+litellm.api_key = "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" # Replace with your actual key
+
+print(f"Attempting to call gpt-4o with LiteLLM...")
+
+try:
+    response = litellm.completion(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "Hello, describe yourself briefly."}],
+        timeout=30 # Add a timeout
+    )
+    print("\n--- GPT-4o Call Successful! ---")
+    print(f"Response: {response.choices[0].message.content}")
+
+except litellm.exceptions.AuthenticationError as e:
+    print("\n--- Authentication Error for GPT-4o ---")
+    print(f"Error: {e}")
+    print("This indicates your API key does not have access to gpt-4o, or there's a billing/region issue.")
+    print("Please verify your OpenAI account access for gpt-4o.")
+except openai.APIConnectionError as e:
+    print("\n--- API Connection Error ---")
+    print(f"Error: {e}")
+    print("Could be network, proxy, or invalid API base URL.")
+except Exception as e:
+    print(f"\n--- An unexpected error occurred: {type(e).__name__} ---")
+    print(f"Error details: {e}")
+
+sys.exit() # Exit the script after testing

@@ -6,3 +6,5 @@ scikit-learn
 giskard
 fairlearn
 pandas
+torch
+giskard[litellm] giskard[llm]

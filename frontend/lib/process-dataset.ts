@@ -30,7 +30,7 @@ interface ProcessedDataset {
 
 function analyzeColumnForProtectedAttributes(
   columnName: string,
-  values: string[],
+  values: string[]
 ): {
   isProtected: boolean
   confidence: number
@@ -56,8 +56,7 @@ function analyzeColumnForProtectedAttributes(
     }
   }
 
-  const uniqueValues = [...new Set(values.slice(0, 100))].map((v) => v?.toString().toLowerCase())
-
+  const uniqueValues = [...new Set(values.slice(0, 100))].map((v) => v?.toLowerCase())
   if (uniqueValues.some((v) => ["male", "female", "m", "f", "man", "woman"].includes(v))) {
     return { isProtected: true, confidence: 0.9, riskLevel: "high" }
   }
@@ -75,39 +74,32 @@ function analyzeColumnForProtectedAttributes(
 }
 
 function detectColumnType(values: string[]): string {
-  const nonEmptyValues = values.filter((v) => v !== null && v !== undefined && v !== "")
-  if (nonEmptyValues.length === 0) return "unknown"
-
-  const numericValues = nonEmptyValues.filter((v) => !isNaN(Number(v)))
-  if (numericValues.length / nonEmptyValues.length > 0.8) return "numerical"
-
-  const dateValues = nonEmptyValues.filter((v) => !isNaN(Date.parse(v)))
-  if (dateValues.length / nonEmptyValues.length > 0.8) return "date"
-
-  const booleanValues = nonEmptyValues.filter((v) =>
-    ["true", "false", "yes", "no", "1", "0", "y", "n"].includes(v.toLowerCase()),
+  const nonEmpty = values.filter((v) => v !== null && v !== undefined && v !== "")
+  if (nonEmpty.length === 0) return "unknown"
+  const numeric = nonEmpty.filter((v) => !isNaN(Number(v)))
+  if (numeric.length / nonEmpty.length > 0.8) return "numerical"
+  const date = nonEmpty.filter((v) => !isNaN(Date.parse(v)))
+  if (date.length / nonEmpty.length > 0.8) return "date"
+  const boolean = nonEmpty.filter((v) =>
+    ["true", "false", "yes", "no", "1", "0", "y", "n"].includes(v.toLowerCase())
   )
-  if (booleanValues.length / nonEmptyValues.length > 0.8) return "boolean"
-
+  if (boolean.length / nonEmpty.length > 0.8) return "boolean"
   return "categorical"
 }
 
 function parseCSV(csvContent: string): { headers: string[]; rows: string[][] } {
   const lines = csvContent.split("\n").filter((line) => line.trim())
   if (lines.length === 0) throw new Error("Empty CSV file")
-
   const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""))
-  const rows = lines.slice(1).map((line) => {
-    return line.split(",").map((cell) => cell.trim().replace(/"/g, ""))
-  })
-
+  const rows = lines.slice(1).map((line) =>
+    line.split(",").map((cell) => cell.trim().replace(/"/g, ""))
+  )
   return { headers, rows }
 }
 
 export async function processDataset(file: File): Promise<ProcessedDataset> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string
@@ -115,17 +107,15 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
         const { headers, rows } = parseCSV(content)
 
         const identifiedAttributes: ProcessedColumn[] = headers.map((header, index) => {
-          const columnValues = rows.map((row) => row[index] || "").filter((v) => v !== "")
-          const uniqueValues = [...new Set(columnValues)].slice(0, 10)
-          const type = detectColumnType(columnValues)
-          const { isProtected, confidence, riskLevel } = analyzeColumnForProtectedAttributes(header, columnValues)
+          const values = rows.map((row) => row[index] || "").filter((v) => v !== "")
+          const uniqueValues = [...new Set(values)].slice(0, 10)
+          const type = detectColumnType(values)
+          const { isProtected, confidence, riskLevel } = analyzeColumnForProtectedAttributes(header, values)
 
           let range = ""
           if (type === "numerical") {
-            const numbers = columnValues.map(Number).filter((n) => !isNaN(n))
-            if (numbers.length > 0) {
-              range = `${Math.min(...numbers)} - ${Math.max(...numbers)}`
-            }
+            const nums = values.map(Number).filter((n) => !isNaN(n))
+            if (nums.length > 0) range = `${Math.min(...nums)} - ${Math.max(...nums)}`
           }
 
           return {
@@ -137,15 +127,15 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
             examples: uniqueValues.slice(0, 3),
             isProtected,
             riskLevel,
-            sampleCount: columnValues.length,
+            sampleCount: values.length,
           }
         })
 
         const processingTime = ((Date.now() - startTime) / 1000).toFixed(1)
         const preview = rows.slice(0, 5).map((row) => {
           const obj: any = {}
-          headers.forEach((header, index) => {
-            obj[header] = row[index] || ""
+          headers.forEach((header, i) => {
+            obj[header] = row[i] || ""
           })
           return obj
         })
@@ -163,8 +153,8 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
             preview,
           },
         })
-      } catch (error) {
-        reject(new Error(`Failed to process CSV: ${error}`))
+      } catch (err) {
+        reject(new Error(`Failed to process CSV: ${err}`))
       }
     }
 
@@ -175,11 +165,9 @@ export async function processDataset(file: File): Promise<ProcessedDataset> {
 
 // Global cache
 let processedDatasetCache: ProcessedDataset | null = null
-
 export function setProcessedDataset(data: ProcessedDataset) {
   processedDatasetCache = data
 }
-
 export function getProcessedDataset(): ProcessedDataset | null {
   return processedDatasetCache
 }
@@ -192,12 +180,39 @@ export async function uploadDatasetToBackend(file: File) {
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-  const res = await fetch(`${backendUrl}/fairness-check`, {
+  const res = await fetch(`${backendUrl}/upload`, {
     method: "POST",
     body: formData,
   })
 
   if (!res.ok) throw new Error("Failed to upload dataset to backend")
+
+  const data = await res.json()
+  return data
+}
+
+export async function runFairnessAnalysis(params: {
+  filename: string
+  protectedAttr: string
+  labelCol?: string
+  tool?: string
+}) {
+  const { filename, protectedAttr, labelCol = "response", tool = "giskard" } = params
+
+  const formData = new FormData()
+  formData.append("filename", filename)
+  formData.append("protected_attr", protectedAttr)
+  formData.append("label_col", labelCol)
+  formData.append("tool", tool)
+
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+  const res = await fetch(`${backendUrl}/fairness-check`, {
+    method: "POST",
+    body: formData,
+  })
+
+  if (!res.ok) throw new Error("Failed to run fairness analysis")
 
   const data = await res.json()
   fairnessResultCache = data

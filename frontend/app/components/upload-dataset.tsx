@@ -6,14 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Upload, FileSpreadsheet, AlertCircle, Sparkles, Zap, Target, FileText, CheckCircle } from "lucide-react"
-import {
-  processDataset,
-  setProcessedDataset,
-  uploadDatasetToBackend,
-} from "@/lib/process-dataset"
+import { processDataset, setProcessedDataset } from "@/lib/process-dataset" // Assume this client-side processes data to get stats
 
+
+// UPDATED PROP INTERFACE: onDataProcessed now expects a filename string
 interface UploadDatasetProps {
-  onDataProcessed: () => void
+  onDataProcessed: (filename: string) => void; // Pass filename to parent
 }
 
 export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
@@ -21,7 +19,8 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [processedData, setProcessedDataState] = useState<any>(null)
+  const [processedData, setProcessedDataState] = useState<any>(null) // Local state for processed data stats
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -58,7 +57,7 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
       if (hasValidExtension || hasValidMimeType) {
         setFile(selectedFile)
         setError(null)
-        setProcessedDataState(null) // Reset processed data
+        setProcessedDataState(null) // Reset processed data stats
       } else {
         setError(
           `Unsupported file format. Please upload: Excel (.xlsx, .xls), CSV (.csv), or Text (.txt) files. 
@@ -76,6 +75,9 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
     setProgress(0)
     setError(null)
 
+    const formData = new FormData();
+    formData.append("file", file); // Append the actual file to form data
+
     try {
       const interval = setInterval(() => {
         setProgress((prev) => {
@@ -87,35 +89,57 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
         })
       }, 200)
 
-      const result = await processDataset(file)
-      setProcessedDataset(result) // Store globally
-      setProcessedDataState(result)
+      // --- STEP 1: Perform client-side processing (e.g., to get row/column count for display) ---
+      const clientSideProcessedResult = await processDataset(file); // From @/lib/process-dataset
+      setProcessedDataset(clientSideProcessedResult); // Store client-side processed data globally
+      setProcessedDataState(clientSideProcessedResult); // Store client-side processed data in local state
 
-      // Send raw file to backend for fairness analysis
-      try {
-        await uploadDatasetToBackend(file)
-      } catch (e) {
-        console.error("Backend upload failed", e)
+      // --- STEP 2: Upload raw file to backend API ---
+      const uploadResponse = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData, // Send the FormData with the file
+      });
+
+      const backendResult = await uploadResponse.json();
+
+      if (backendResult.status === "success" && backendResult.filename) {
+        setProgress(100);
+        clearInterval(interval);
+        
+        // --- Notify parent component with the filename from backend ---
+        setTimeout(() => {
+          onDataProcessed(backendResult.filename); // Pass filename to page.tsx
+        }, 1000); // Small delay to show 100% progress
+      } else {
+        clearInterval(interval);
+        setError(backendResult.message || "Backend upload failed. No filename returned.");
+        console.error("Backend upload error:", backendResult);
+        setFile(null); // Reset file on backend upload failure
       }
 
-      setProgress(100)
-      clearInterval(interval)
-
-      // Small delay to show completion, then notify parent
-      setTimeout(() => {
-        onDataProcessed()
-      }, 1000)
     } catch (err: any) {
-      setError(`Error processing the dataset: ${err.message}`)
-      console.error(err)
+      clearInterval(interval);
+      setError(`Error during file upload or processing: ${err.message}`);
+      console.error(err);
+      setFile(null); // Reset file on error
     } finally {
-      setUploading(false)
+      setUploading(false);
     }
   }
 
+  // handleViewResults should also pass the filename, as it's the identifier for the backend
   const handleViewResults = () => {
-    onDataProcessed()
+    if (file && processedData?.filename) { // Ensure filename is available from a previous successful upload
+        onDataProcessed(processedData.filename); // Pass the filename if already processed
+    } else if (file) { // If processedData not set but file exists (e.g., after fresh reload)
+        // This case might need a re-upload or a way to get the filename if not persisted
+        setError("File was processed but its backend reference is lost. Please re-upload.");
+        setFile(null); // Force re-upload
+    } else {
+        // No file selected yet
+    }
   }
+
 
   const getFileIcon = (fileName: string) => {
     const extension = fileName.toLowerCase().split(".").pop()
@@ -209,7 +233,7 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
                   size="sm"
                   onClick={() => {
                     setFile(null)
-                    setProcessedDataState(null)
+                    setProcessedDataState(null) // Reset processed data stats
                   }}
                   disabled={uploading}
                   className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
@@ -232,7 +256,7 @@ export function UploadDataset({ onDataProcessed }: UploadDatasetProps) {
                     {progress < 50
                       ? "Reading file structure..."
                       : progress < 90
-                        ? "Analyzing columns for bias patterns..."
+                        ? "Uploading to backend & analyzing columns..." // Updated text
                         : "Finalizing analysis..."}
                   </div>
                 </div>

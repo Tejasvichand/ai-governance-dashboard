@@ -39,6 +39,7 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
       alert("Please select at least one protected attribute to continue.")
       return
     }
+    console.log("Selected Protected Attributes:", selected)  // ✅ Add this line here
     sessionStorage.setItem("selectedProtectedAttributes", JSON.stringify(selected))
     onContinue()
   }

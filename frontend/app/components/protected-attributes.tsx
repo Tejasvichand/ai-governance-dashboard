@@ -26,6 +26,12 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
     if (processedData?.data) {
       setAttributes(processedData.data.identifiedAttributes)
       setDatasetInfo(processedData.data)
+
+      // Initialize sessionStorage with attributes marked as protected by default
+      const defaultSelected = processedData.data.identifiedAttributes
+        .filter((attr) => attr.isProtected)
+        .map((attr) => attr.name)
+      sessionStorage.setItem("selectedProtectedAttributes", JSON.stringify(defaultSelected))
     }
     setLoading(false)
   }, [])
@@ -34,6 +40,12 @@ export function ProtectedAttributes({ onContinue }: ProtectedAttributesProps) {
     const newAttributes = [...attributes]
     newAttributes[index].isProtected = !newAttributes[index].isProtected
     setAttributes(newAttributes)
+
+    // Save updated selected protected attributes to sessionStorage
+    const selectedAttrs = newAttributes
+      .filter((attr) => attr.isProtected)
+      .map((attr) => attr.name)
+    sessionStorage.setItem("selectedProtectedAttributes", JSON.stringify(selectedAttrs))
   }
 
   const handleContinue = () => {
