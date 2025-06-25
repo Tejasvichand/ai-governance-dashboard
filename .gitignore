@@ -28,3 +28,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 node_modules/
+echo ".venv/" >> .gitignore
+echo "*.env" >> .gitignore # Good practice to also ignore .env files for secrets
+echo "node_modules/" >> .gitignore # Also ignore frontend dependencies
+echo ".next/" >> .gitignore # For Next.js build output
+.venv/
+*.env
+node_modules/
+.next/
