@@ -1,6 +1,6 @@
 # AI Governance Dashboard
 
-Welcome to the Lumina CRI Fairness Scanner — a full-stack AI governance interface for identifying and mitigating fairness risks in machine learning and LLM systems.
+Welcome to Fairness Scanner — a full-stack AI governance interface for identifying and mitigating fairness risks in machine learning and LLM systems.
 
 This project includes:
 
